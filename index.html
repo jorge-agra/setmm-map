@@ -6,6 +6,9 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="sections.js"></script>
 <script src="defs.js"></script>
+<script src="msc.js"></script>
+<script src="mm100.js"></script>
+<script src="highlights.js"></script>
 <style>
   :root { --bg:#fafafa; --fg:#222; --muted:#777; --line:#ddd; }
   * { box-sizing: border-box; }
@@ -46,6 +49,31 @@
   .def .cm code { font-family:ui-monospace, Menlo, monospace; background:#f4f4f4; padding:0 2px; }
   .def .cm .ref { font-family:ui-monospace, Menlo, monospace; color:#0b62c4; }
   .empty { color:var(--muted); padding:16px 0; }
+  .def .meta { font-size:11px; margin-top:3px; display:flex; flex-wrap:wrap; gap:4px; align-items:center; color:var(--muted); }
+  .chip { border:1px solid var(--line); border-radius:10px; padding:0 7px; background:#fff; cursor:pointer;
+          font:11px ui-monospace, Menlo, monospace; color:#333; }
+  .chip:hover { background:#222; color:#fff; border-color:#222; }
+  .loc { cursor:pointer; color:#0b62c4; } .loc:hover { text-decoration:underline; }
+  select:disabled + *, label.off { opacity:.4; }
+  /* theorem lists: muted, one hue each */
+  .l-mm100 { --ink:#4f6475; --bg:#eef2f5; --edge:#9fb0bd; --row:#f6f8fa; --rowedge:#e3e9ee; }
+  .l-hl    { --ink:#5e6b4e; --bg:#f0f3ea; --edge:#aab597; --row:#f7f8f3; --rowedge:#e6eadc; }
+  /* map pill: one count; muted, or vivid when a Metamath 100 theorem is inside */
+  .pill     { --ink:#55606a; --bg:#eef0f2; --edge:#a7b0b8; }
+  .pill.hot { --ink:#ffffff; --bg:#2f6fb0; --edge:#1f5590; }
+  .badge { fill:var(--ink); font-weight:600; cursor:pointer; pointer-events:all; }
+  .badgebg { fill:var(--bg); stroke:var(--edge); stroke-width:.8; cursor:pointer; }
+  g.mb:hover .badgebg { stroke:var(--ink); }
+  #remtog { cursor:pointer; user-select:none; }
+  #remtog input { vertical-align:middle; }
+  #remlist { border:1px solid var(--line); background:#fff; border-radius:4px; padding:4px 10px; cursor:pointer; }
+  #remlist:hover { background:#eef2f5; }
+  aside h3.rem { color:var(--ink); border-bottom-color:var(--edge); }
+  .def.rem { background:var(--row); margin:0 -12px; padding:6px 12px; border-bottom:1px solid var(--rowedge); }
+  .def.rem .ttl { font-weight:600; }
+  .def.rem .num { color:var(--ink); font-weight:600; margin-right:4px; }
+  .def .note { font-size:12px; color:var(--ink); margin-top:2px; }
+  .missing { font-size:12px; color:var(--muted); margin:6px 0; }
   .node.sel > circle.n, .node.sel > rect.n { stroke:#000; stroke-width:2.5; }
   svg { display:block; width:100%; height:100%; }
   .node { cursor:pointer; }
@@ -63,18 +91,24 @@
 <body>
 <header>
   <h1>set.mm map</h1>
+  <div class="seg" id="hier">
+    <button data-h="setmm" class="on" title="set.mm parts / chapters / sections">set.mm</button><button data-h="msc" title="Definitions grouped by MSC 2020 code (draft mapping)">MSC</button>
+  </div>
   <div class="seg" id="view">
     <button data-v="pack" class="on">Circle pack</button><button data-v="treemap">Treemap</button>
   </div>
   <label>Depth <select id="depth"></select></label>
-  <label>Size by
+  <label id="metric-l">Size by
     <select id="metric">
       <option value="all">$p + $a</option>
       <option value="p">$p (theorems)</option>
       <option value="a">$a (axioms/defs/syntax)</option>
+      <option value="defs">definitions (df-)</option>
       <option value="count">equal (1 per leaf)</option>
     </select>
   </label>
+  <span id="lists"></span>
+  <button id="remlist" title="List theorems and definitions under the current node">List here</button>
   <span class="hint">click = drill down · click a last-level node = its definitions · breadcrumb / Backspace = up</span>
 </header>
 <div id="crumbs"></div>
@@ -92,23 +126,59 @@
 <div id="tip"></div>
 
 <script>
-const LEVEL = ["database", "part", "chapter", "section", "subsection", "subsubsection"];
-const raw = window.SETMM;
-
-// Full hierarchy with stable ids, used for navigation and breadcrumbs.
-const full = d3.hierarchy(raw);
-let nid = 0; full.each(d => d.id = nid++);
-const maxHeight = full.height;
-
+const LEVELS = {
+  setmm: ["database", "part", "chapter", "section", "subsection", "subsubsection"],
+  msc: ["MSC 2020", "class", "subclass", "code"],
+};
 const DEFS = window.SETMM_DEFS || {};
-const state = { view: "pack", depth: 2, metric: "all", focus: full, panel: null, sel: null };
+const MSC = window.SETMM_MSC || { tree: { name: "MSC 2020 (msc.js missing)" }, byLabel: {}, names: {} };
+
+// Both hierarchies, with ids unique across them.
+let nid = 0;
+const TREES = { setmm: d3.hierarchy(window.SETMM), msc: d3.hierarchy(MSC.tree) };
+for (const t of Object.values(TREES)) t.each(d => d.id = nid++);
+const full = TREES.setmm;
+
+// Lookups for cross-links: set.mm leaf by header line, MSC leaf by code.
+const setmmLeaf = new Map(full.leaves().map(l => [l.data.line, l]));
+const mscLeaf = new Map();
+TREES.msc.each(n => {
+  if (n.data.code === undefined || n.data.code === "") return;
+  if (!n.children) { if (!mscLeaf.has(n.data.code) || n.data.name !== "(general)") mscLeaf.set(n.data.code, n); }
+});
+
+// Theorem lists, each indexed by the leaf its theorems sit on in each hierarchy.
+const REM = window.SETMM_MM100 || { theorems: [], missing: [] };
+const LISTS = [
+  { key: "mm100", name: "Metamath 100", cls: "l-mm100", on: true, data: REM,
+    hint: "Metamath 100 (Freek Wiedijk's 100 theorems) proved in set.mm" },
+  { key: "hl", name: "Highlights", cls: "l-hl", on: true, data: window.SETMM_HIGHLIGHTS || { theorems: [] },
+    hint: "Hand-picked theorems (highlights.toml)" },
+];
+for (const L of LISTS) {
+  L.byLeaf = new Map();
+  const add = (leaf, t) => { if (!leaf) return; if (!L.byLeaf.has(leaf)) L.byLeaf.set(leaf, []); L.byLeaf.get(leaf).push(t); };
+  for (const t of L.data.theorems) { add(setmmLeaf.get(t.line), t); for (const c of t.msc) add(mscLeaf.get(c), t); }
+}
+function listUnder(L, node) {
+  return [...new Set(node.leaves().flatMap(l => L.byLeaf.get(l) || []))]
+    .sort((a, b) => (a.n ?? 999) - (b.n ?? 999));
+}
+const activeLists = () => LISTS.filter(L => L.on);
+
+const state = { hier: "setmm", view: "pack", depth: 2, metric: "all", focus: full, panel: null, sel: null,
+                saved: { setmm: full, msc: TREES.msc } };
+const LEVEL = () => LEVELS[state.hier];
 
 const svg = d3.select("#chart");
 const tip = d3.select("#tip");
 const fmt = d3.format(",");
 
+// MSC leaves carry refs (definitions) and p/a: counts of the set.mm sections mapped
+// to that code, so a section with two codes counts in both.
 function leafVal(d) {
   const m = state.metric;
+  if (m === "defs") return d.refs ? d.refs.length : (DEFS[d.line] || []).length;
   if (m === "count") return 1;
   if (m === "p") return d.p || 0;
   if (m === "a") return d.a || 0;
@@ -148,14 +218,32 @@ function pathOf(h) { return h.ancestors().reverse().slice(1).map(a => a.data.nam
 
 function showTip(ev, d) {
   const s = d.data.src, x = s.data;
+  if (state.hier === "msc") {
+    const refs = s.leaves().flatMap(l => l.data.refs || []);
+    const uniq = new Set(refs.map(r => r.join(":"))).size;
+    const sp = d3.sum(s.leaves(), l => l.data.p || 0), sa = d3.sum(s.leaves(), l => l.data.a || 0);
+    tip.style("display", "block").html(
+      `<div class="path">${pathOf(s).slice(0, -1).join(" › ") || "&nbsp;"}</div>` +
+      `<b>${esc(leafTitle(s))}</b> <span class="path">(${LEVEL()[s.depth] || "level " + s.depth})</span><br>` +
+      `${fmt(sp)} $p · ${fmt(sa)} $a · ${fmt(uniq)} definition${uniq === 1 ? "" : "s"}` +
+      (s.children ? ` · ${s.children.length} children` : "") + remTip(s));
+    moveTip(ev); return;
+  }
   const agg = s.copy().sum(n => n.children ? 0 : (n.p || 0) + (n.a || 0)).value;
   const p = s.copy().sum(n => n.children ? 0 : (n.p || 0)).value;
   tip.style("display", "block").html(
     `<div class="path">${pathOf(s).slice(0, -1).join(" › ") || "&nbsp;"}</div>` +
-    `<b>${x.name}</b> <span class="path">(${LEVEL[s.depth] || "level " + s.depth}, line ${fmt(x.line)})</span><br>` +
+    `<b>${x.name}</b> <span class="path">(${LEVEL()[s.depth] || "level " + s.depth}, line ${fmt(x.line)})</span><br>` +
     `${fmt(agg)} statements · ${fmt(p)} $p · ${fmt(agg - p)} $a` +
-    (s.children ? ` · ${s.children.length} children` : ""));
+    (s.children ? ` · ${s.children.length} children` : "") + remTip(s));
   moveTip(ev);
+}
+function remTip(s) {
+  return activeLists().map(L => {
+    const r = listUnder(L, s); if (!r.length) return "";
+    const names = r.slice(0, 4).map(t => esc(t.title)).join("; ") + (r.length > 4 ? "; …" : "");
+    return `<br>${L.name} (${r.length}): ${names}`;
+  }).join("");
 }
 function moveTip(ev) {
   const w = tip.node().offsetWidth, h = tip.node().offsetHeight;
@@ -178,8 +266,24 @@ function markup(s) {
   return esc(s).split("`").map((part, i) => i % 2 ? `<code>${part.trim()}</code>`
     : part.replace(/~ (\S+)/g, '<span class="ref">$1</span>')).join("");
 }
+// Entries: { d: [label, statement, comment], line, i } — line/i locate it in DEFS.
+function entriesOf(leaf) {
+  if (leaf.data.refs) return leaf.data.refs.map(([line, i]) => ({ d: DEFS[line][i], line, i }));
+  return (DEFS[leaf.data.line] || []).map((d, i) => ({ d, line: leaf.data.line, i }));
+}
 function defsUnder(node) {
-  return node.leaves().map(l => ({ leaf: l, defs: DEFS[l.data.line] || [] })).filter(g => g.defs.length);
+  return node.leaves().map(l => ({ leaf: l, defs: entriesOf(l) })).filter(g => g.defs.length);
+}
+function leafTitle(n) {
+  return (n.data.name === "(general)" || n.data.name === "(intro)") && n.parent
+    ? `${n.parent.data.name} ${n.data.name}` : n.data.name;
+}
+// Switch hierarchy and show `leaf` selected with its definitions.
+function jumpTo(hier, leaf) {
+  if (!leaf) return;
+  setHier(hier, false);
+  state.focus = leaf.parent || leaf; state.sel = leaf;
+  render(true); openPanel(leaf); highlight();
 }
 function openPanel(node) {
   state.panel = node;
@@ -196,25 +300,77 @@ function fillPanel() {
   const node = state.panel; if (!node) return;
   const q = d3.select("#p-filter").property("value").trim().toLowerCase();
   const groups = defsUnder(node).map(g => ({ leaf: g.leaf,
-    defs: q ? g.defs.filter(d => d.join(" ").toLowerCase().includes(q)) : g.defs })).filter(g => g.defs.length);
+    defs: q ? g.defs.filter(e => e.d.join(" ").toLowerCase().includes(q)) : g.defs })).filter(g => g.defs.length);
   const total = d3.sum(groups, g => g.defs.length);
-  d3.select("#p-title").text(node.data.name);
+  d3.select("#p-title").text(leafTitle(node));
   d3.select("#p-sub").text(`${pathOf(node).slice(0, -1).join(" › ")} — ${total} definition${total === 1 ? "" : "s"}` +
     (node.children ? ` in ${groups.length} section${groups.length === 1 ? "" : "s"}` : ""));
   const list = d3.select("#p-list").html("");
-  if (!groups.length) { list.append("div").attr("class", "empty").text(q ? "No match." : "No df- definitions here."); return; }
+  let nrem = 0; const tags = [];
+  for (const L of activeLists()) {
+    const rems = listUnder(L, node).filter(t => !q || [t.title, t.label, t.stmt, t.comment, t.note].join(" ").toLowerCase().includes(q));
+    if (!rems.length) continue;
+    nrem += rems.length; tags.push(`${rems.length} ${L.name}`);
+    list.append("h3").attr("class", "rem " + L.cls).text(`${L.name} (${rems.length})`);
+    for (const t of rems) remEntry(list, t, L);
+  }
+  const rems = { length: nrem };
+  if (!node.parent && !q && REM.missing.length && LISTS[0].on) {
+    const det = list.append("details").attr("class", "missing");
+    det.append("summary").text(`${REM.missing.length} of the Metamath 100 not (yet) in set.mm`);
+    det.append("div").text(REM.missing.map(([n, t]) => `#${n} ${t}`).join(" · "));
+  }
+  d3.select("#p-sub").text(d3.select("#p-sub").text() + (tags.length ? " · " + tags.join(" · ") : ""));
+  if (!groups.length) { if (!rems.length) list.append("div").attr("class", "empty").text(q ? "No match." : "No df- definitions here."); return; }
+  if (rems.length) list.append("h3").text(`Definitions (${total})`).style("cursor", "default");
   for (const g of groups) {
-    if (node.children) list.append("h3").text(g.leaf.data.name).attr("title", "Show only this section")
+    if (node.children) list.append("h3").text(leafTitle(g.leaf)).attr("title", "Show only this section")
       .on("click", () => { state.sel = g.leaf; openPanel(g.leaf); highlight(); });
-    for (const [lbl, math, cm] of g.defs) {
+    for (const { d: [lbl, math, cm], line } of g.defs) {
       const el = list.append("div").attr("class", "def");
       el.append("div").attr("class", "lbl").text(lbl);
       el.append("div").attr("class", "math").text(math);
+      const meta = el.append("div").attr("class", "meta");
+      if (state.hier === "setmm") {
+        const codes = MSC.byLabel[lbl] || [];
+        meta.append("span").text(codes.length ? "MSC" : "MSC: none");
+        for (const c of codes) meta.append("span").attr("class", "chip").text(c)
+          .attr("title", (MSC.names[c] || "") + " — show in MSC view")
+          .on("click", () => jumpTo("msc", mscLeaf.get(c)));
+      } else {
+        const sl = setmmLeaf.get(line);
+        if (sl) meta.append("span").attr("class", "loc").attr("title", "Show in set.mm view")
+          .text("set.mm: " + pathOf(sl).filter(x => x !== "(intro)").slice(1).join(" › "))
+          .on("click", () => jumpTo("setmm", sl));
+        const other = (MSC.byLabel[lbl] || []).filter(c => !g.leaf.data.code || c !== g.leaf.data.code);
+        if (other.length) meta.append("span").text("also");
+        for (const c of other) meta.append("span").attr("class", "chip").text(c)
+          .attr("title", MSC.names[c] || "").on("click", () => jumpTo("msc", mscLeaf.get(c)));
+      }
       if (cm) { const det = el.append("details"); det.append("summary").text("comment");
                 det.append("div").attr("class", "cm").html(markup(cm)); }
     }
   }
   list.node().scrollTop = 0;
+}
+function remEntry(list, t, L) {
+  const el = list.append("div").attr("class", "def rem " + L.cls);
+  const h = el.append("div");
+  if (t.n != null) h.append("span").attr("class", "num").text("#" + t.n);
+  h.append("span").attr("class", "ttl").text(t.title);
+  el.append("div").attr("class", "lbl").text(t.label + (t.also.length ? "   (also " + t.also.join(", ") + ")" : ""));
+  el.append("div").attr("class", "math").text(t.stmt);
+  if (t.note) el.append("div").attr("class", "note").text(t.note);
+  const meta = el.append("div").attr("class", "meta");
+  const sl = setmmLeaf.get(t.line);
+  if (state.hier === "msc" && sl) meta.append("span").attr("class", "loc").attr("title", "Show in set.mm view")
+    .text("set.mm: " + pathOf(sl).filter(x => x !== "(intro)").slice(1).join(" › "))
+    .on("click", () => jumpTo("setmm", sl));
+  if (state.hier === "setmm") meta.append("span").text(t.msc.length ? "MSC" : "MSC: none");
+  for (const c of t.msc) meta.append("span").attr("class", "chip").text(c)
+    .attr("title", (MSC.names[c] || "") + " — show in MSC view").on("click", () => jumpTo("msc", mscLeaf.get(c)));
+  if (t.comment) { const det = el.append("details"); det.append("summary").text("comment");
+                   det.append("div").attr("class", "cm").html(markup(t.comment)); }
 }
 function highlight() {
   svg.selectAll("g.layer g").classed("sel", d => state.sel && d.data.src === state.sel);
@@ -224,7 +380,8 @@ function syncPanel() {
   if (state.focus.height === 1) {
     if (!state.sel || state.sel.parent !== state.focus) state.sel = null;
     openPanel(state.sel || state.focus);
-  } else if (state.panel && !(state.sel && state.focus.leaves().includes(state.sel))) {
+  } else if (state.panel && !(state.sel && (state.sel.ancestors().includes(state.focus) ||
+                                            state.focus.ancestors().includes(state.sel)))) {
     closePanel();
   }
 }
@@ -247,7 +404,7 @@ function depthOptions() {
   if (state.depth > maxD) state.depth = maxD;
   const sel = d3.select("#depth");
   sel.selectAll("option").data(d3.range(1, maxD + 1)).join("option")
-    .attr("value", d => d).text(d => `${d} — ${LEVEL[state.focus.depth + d] || "level " + (state.focus.depth + d)}`);
+    .attr("value", d => d).text(d => `${d} — ${LEVEL()[state.focus.depth + d] || "level " + (state.focus.depth + d)}`);
   sel.property("value", state.depth);
 }
 
@@ -288,6 +445,27 @@ function drawPack(g, root, color, W, H) {
     .attr("text-anchor", "middle").attr("dy", "0.35em")
     .style("font-size", d => Math.min(13, Math.max(8, d.r / 4)) + "px")
     .text(d => clip(d.data.src.data.name, Math.floor(d.r / 3.2)));
+  badges(node.filter(d => !d.children && d.depth > 0 && d.r > 6), d => [0, -d.r + Math.min(9, d.r * 0.5)]);
+}
+function openRem(src) { state.sel = src; openPanel(src); highlight(); }
+
+// One count pill per box: distinct theorems across the active lists.
+// Vivid when at least one of them is a Metamath 100 theorem.
+function badges(sel, at) {
+  sel.each(function (d) {
+    const per = activeLists().map(L => [L, listUnder(L, d.data.src)]);
+    const all = new Set(per.flatMap(([, ts]) => ts.map(t => t.label)));
+    if (!all.size) return;
+    const n100 = per.filter(([L]) => L.key === "mm100").reduce((k, [, ts]) => k + ts.length, 0);
+    const [ax, ay] = at(d), w = 12 + 6 * String(all.size).length;
+    const b = d3.select(this).append("g").attr("class", "mb pill" + (n100 ? " hot" : ""))
+      .attr("transform", `translate(${ax},${ay})`)
+      .on("click", ev => { ev.stopPropagation(); openRem(d.data.src); });
+    b.append("title").text(`${all.size} theorem${all.size === 1 ? "" : "s"}: ` +
+      per.filter(([, ts]) => ts.length).map(([L, ts]) => `${ts.length} ${L.name}`).join(", ") + " — click to list");
+    b.append("rect").attr("class", "badgebg").attr("rx", 6.5).attr("x", -w / 2).attr("y", -6.5).attr("width", w).attr("height", 13);
+    b.append("text").attr("class", "badge").attr("text-anchor", "middle").attr("dy", "0.35em").style("font-size", "10px").text(all.size);
+  });
 }
 
 function drawTreemap(g, root, color, W, H) {
@@ -315,6 +493,8 @@ function drawTreemap(g, root, color, W, H) {
       lines.forEach((ln, i) => t.append("tspan").attr("x", 4).attr("dy", i ? LINE_H : 0)
         .attr("fill-opacity", i === lines.length - 1 && ln === fmt(d.value) ? 0.6 : 1).text(ln));
     });
+  badges(node.filter(d => !d.children && (d.x1 - d.x0) > 26 && (d.y1 - d.y0) > 14),
+         d => [d.x1 - d.x0 - 14, d.y1 - d.y0 - 9]);
 }
 
 // Greedy word wrap into at most maxLines lines of width w (px); last line gets "…" if cut.
@@ -346,6 +526,25 @@ function wrap(text, w, maxLines) {
 function clip(s, n) { return s.length <= n ? s : s.slice(0, Math.max(1, n - 1)) + "…"; }
 
 // Controls
+function setHier(h, rerender = true) {
+  if (h === state.hier) return;
+  state.saved[state.hier] = state.focus;
+  state.hier = h; state.focus = state.saved[h]; state.sel = null;
+  d3.selectAll("#hier button").classed("on", function () { return this.dataset.h === h; });
+  d3.select("#metric-l").attr("title", h === "msc"
+    ? "MSC view: $p/$a are counted per set.mm section, so a section with two codes counts in both" : null);
+  if (state.panel) closePanel();
+  if (rerender) render(true);
+}
+d3.selectAll("#hier button").on("click", function () { setHier(this.dataset.h); });
+for (const L of LISTS) {
+  const lab = d3.select("#lists").append("label").attr("class", L.cls).attr("title", L.hint)
+    .style("margin-right", "10px").style("cursor", "pointer");
+  lab.append("input").attr("type", "checkbox").property("checked", L.on).style("vertical-align", "middle")
+    .on("change", function () { L.on = this.checked; render(true); if (state.panel) fillPanel(); });
+  lab.append("span").text(L.name);
+}
+d3.select("#remlist").on("click", () => openRem(state.focus));
 d3.selectAll("#view button").on("click", function () {
   state.view = this.dataset.v;
   d3.selectAll("#view button").classed("on", function () { return this.dataset.v === state.view; });

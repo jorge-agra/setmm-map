@@ -1,0 +1,168 @@
+# MSC 2020 codes used by msc-map.toml, with names. Hand-written subset:
+# all 63 top-level classes, plus the 3- and 5-character codes the mapping uses.
+# Names are abbreviated in places; replace with the official list (msc2020.org,
+# CC BY-NC-SA) if exact wording matters.
+00	General and overarching topics; collections
+01	History and biography
+03	Mathematical logic and foundations
+05	Combinatorics
+06	Order, lattices, ordered algebraic structures
+08	General algebraic systems
+11	Number theory
+12	Field theory and polynomials
+13	Commutative algebra
+14	Algebraic geometry
+15	Linear and multilinear algebra; matrix theory
+16	Associative rings and algebras
+17	Nonassociative rings and algebras
+18	Category theory; homological algebra
+19	K-theory
+20	Group theory and generalizations
+22	Topological groups, Lie groups
+26	Real functions
+28	Measure and integration
+30	Functions of a complex variable
+31	Potential theory
+32	Several complex variables and analytic spaces
+33	Special functions
+34	Ordinary differential equations
+35	Partial differential equations
+37	Dynamical systems and ergodic theory
+39	Difference and functional equations
+40	Sequences, series, summability
+41	Approximations and expansions
+42	Harmonic analysis on Euclidean spaces
+43	Abstract harmonic analysis
+44	Integral transforms, operational calculus
+45	Integral equations
+46	Functional analysis
+47	Operator theory
+49	Calculus of variations and optimal control; optimization
+51	Geometry
+52	Convex and discrete geometry
+53	Differential geometry
+54	General topology
+55	Algebraic topology
+57	Manifolds and cell complexes
+58	Global analysis, analysis on manifolds
+60	Probability theory and stochastic processes
+62	Statistics
+65	Numerical analysis
+68	Computer science
+70	Mechanics of particles and systems
+74	Mechanics of deformable solids
+76	Fluid mechanics
+78	Optics, electromagnetic theory
+80	Classical thermodynamics, heat transfer
+81	Quantum theory
+82	Statistical mechanics, structure of matter
+83	Relativity and gravitational theory
+85	Astronomy and astrophysics
+86	Geophysics
+90	Operations research, mathematical programming
+91	Game theory, economics, finance, and other social and behavioral sciences
+92	Biology and other natural sciences
+93	Systems theory; control
+94	Information and communication theory, circuits
+97	Mathematics education
+03A	Philosophical aspects of logic and foundations
+03B	General logic
+03C	Model theory
+03D	Computability and recursion theory
+03E	Set theory
+03F	Proof theory and constructive mathematics
+05A	Enumerative combinatorics
+05C	Graph theory
+05D	Extremal combinatorics
+06A	Ordered sets
+06B	Lattices
+06C	Modular lattices, complemented lattices
+06F	Ordered structures
+08A	Algebraic structures
+11A	Elementary number theory
+11B	Sequences and sets
+11D	Diophantine equations
+11J	Diophantine approximation, transcendental number theory
+11M	Zeta and L-functions: analytic theory
+11N	Multiplicative number theory
+11P	Additive number theory; partitions
+11R	Algebraic number theory: global fields
+11S	Algebraic number theory: local fields
+11Y	Computational number theory
+12D	Real and complex fields
+12E	General field theory
+12F	Field extensions
+12J	Topological fields
+13A	General commutative ring theory
+13B	Commutative ring extensions and related topics
+13E	Chain conditions, finiteness conditions in commutative ring theory
+13F	Arithmetic rings and other special commutative rings
+13G	Integral domains
+13J	Topological rings and modules
+15A	Basic linear algebra
+16B	General and miscellaneous (associative rings)
+16D	Modules, bimodules and ideals in associative algebras
+16K	Division rings and semisimple Artin rings
+16N	Radicals and radical properties of associative rings
+16P	Chain conditions, growth conditions, and other forms of finiteness
+16S	Associative rings and algebras arising under various constructions
+16W	Associative rings and algebras with additional structure
+16Y	Generalizations (semirings, near-rings)
+18A	General theory of categories and functors
+18B	Special categories
+20A	Foundations (group theory)
+20B	Permutation groups
+20D	Abstract finite groups
+20E	Structure and classification of infinite or finite groups
+20K	Abelian groups
+20M	Semigroups
+20N	Other generalizations of groups
+22A	Topological and differentiable algebraic systems
+26A	Functions of one variable
+26D	Inequalities in real analysis
+28A	Classical measure theory
+28A05	Classes of sets (Borel fields, σ-rings, etc.), measurable sets
+28A10	Real- or complex-valued set functions
+28A12	Contents, measures, outer measures, capacities
+28A20	Measurable and nonmeasurable functions
+28A25	Integration with respect to measures and other set functions
+28A35	Measures and integrals in product spaces
+28A75	Length, area, volume, other geometric measure theory
+33B	Elementary classical functions
+39A	Difference equations
+39B	Functional equations and inequalities
+40A	Convergence and divergence of infinite limiting processes
+41A	Approximations and expansions
+42A	Harmonic analysis in one variable
+46A	Topological linear spaces and related structures
+46B	Normed linear spaces and Banach spaces
+46C	Inner product and Hilbert spaces
+47A	General theory of linear operators
+47B	Special classes of linear operators
+51A	Linear incidence geometry
+51G	Ordered geometries
+51M	Real and complex geometry
+51N	Analytic and descriptive geometry
+54A	Generalities in topology
+54B	Basic constructions in general topology
+54C	Maps and general types of topological spaces defined by maps
+54D	Fairly general properties of topological spaces
+54E	Topological spaces with richer structures
+54H	Connections of general topology with other structures
+55M	Classical topics in algebraic topology
+55P	Homotopy theory
+55Q	Homotopy groups
+57M	Low-dimensional topology (incl. covering spaces)
+60A	Foundations of probability theory
+60A05	Axioms; other general questions in probability
+60A10	Probabilistic measure theory
+60E	Distribution theory
+60E05	Probability distributions: general theory
+60E10	Characteristic functions; other transforms
+60F	Limit theorems in probability theory
+60F05	Central limit and other weak theorems
+68Q	Theory of computing
+68R	Discrete mathematics in relation to computer science
+68V	Computer science support for mathematical research and practice
+81P	Foundations, quantum information and its processing
+91A	Game theory

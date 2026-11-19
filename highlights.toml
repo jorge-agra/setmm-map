@@ -1,0 +1,87 @@
+# Highlights: set.mm theorems worth pointing at, kept by hand.
+# (Metamath 100 entries come from set.mm/mm_100.html and mm100-extra.toml.)
+#
+# label = set.mm $p label (required)
+# title = display title (required)
+# note  = free text shown in the panel (optional)
+# MSC codes come from the theorem's section; override in msc-map.toml [labels].
+
+[[theorem]]
+label = "ru"
+title = "Russell's paradox"
+
+[[theorem]]
+label = "zorn"
+title = "Zorn's lemma"
+
+[[theorem]]
+label = "weth"
+title = "Well-ordering theorem"
+
+[[theorem]]
+label = "ptcmp"
+title = "Tychonoff's theorem"
+
+[[theorem]]
+label = "bcth"
+title = "Baire category theorem"
+
+[[theorem]]
+label = "heibor"
+title = "Heine–Borel theorem"
+
+[[theorem]]
+label = "bwth"
+title = "Bolzano–Weierstrass theorem"
+
+[[theorem]]
+label = "kur14"
+title = "Kuratowski's closure-complement theorem"
+
+[[theorem]]
+label = "bfp"
+title = "Banach fixed point theorem"
+
+[[theorem]]
+label = "ubth"
+title = "Uniform boundedness principle"
+
+[[theorem]]
+label = "stoweid"
+title = "Stone–Weierstrass theorem (real version)"
+
+[[theorem]]
+label = "ftc2"
+title = "Fundamental theorem of calculus, part 2"
+
+[[theorem]]
+label = "poimir"
+title = "Poincaré–Miranda theorem"
+
+[[theorem]]
+label = "eulerid"
+title = "Euler's identity"
+
+[[theorem]]
+label = "eirr"
+title = "e is irrational"
+
+[[theorem]]
+label = "fermltl"
+title = "Fermat's little theorem"
+
+[[theorem]]
+label = "ostth"
+title = "Ostrowski's theorem"
+
+[[theorem]]
+label = "3cubes"
+title = "Every rational is a sum of three rational cubes"
+
+[[theorem]]
+label = "cayley"
+title = "Cayley's theorem"
+
+[[theorem]]
+label = "hbt"
+title = "Hilbert basis theorem"

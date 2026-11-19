@@ -1,0 +1,12 @@
+# Extra Metamath 100 entries kept by hand, on top of set.mm/mm_100.html and the
+# "This is Metamath 100 proof #N" comment tags. Entries without n are also allowed.
+# label  = set.mm $p label (required)
+# title  = display title (required unless it is already a Metamath 100 entry)
+# n      = Metamath 100 / Freek Wiedijk "100 theorems" number, if it is one
+# note   = free text shown in the panel
+
+[[theorem]]
+label = "morleyR2"
+title = "Morley's Theorem"
+n = 84
+note = "Jorge Agra's mathbox; not yet linked from mm_100.html."
