@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>set.mm map — circle pack / treemap</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="sections.js"></script>
+<script src="defs.js"></script>
+<style>
+  :root { --bg:#fafafa; --fg:#222; --muted:#777; --line:#ddd; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:13px/1.4 system-ui, sans-serif; color:var(--fg); background:var(--bg);
+         display:flex; flex-direction:column; height:100vh; }
+  header { display:flex; gap:16px; align-items:center; padding:8px 12px; border-bottom:1px solid var(--line);
+           flex-wrap:wrap; background:#fff; }
+  header h1 { font-size:14px; margin:0 8px 0 0; }
+  .seg button { border:1px solid var(--line); background:#fff; padding:4px 10px; cursor:pointer; }
+  .seg button:first-child { border-radius:4px 0 0 4px; } .seg button:last-child { border-radius:0 4px 4px 0; }
+  .seg button + button { border-left:none; }
+  .seg button.on { background:#222; color:#fff; border-color:#222; }
+  label { color:var(--muted); } select { font:inherit; }
+  #crumbs { padding:6px 12px; border-bottom:1px solid var(--line); background:#fff; min-height:30px; }
+  #crumbs a { color:#0b62c4; cursor:pointer; text-decoration:none; } #crumbs a:hover { text-decoration:underline; }
+  #crumbs .sep { color:var(--muted); margin:0 6px; }
+  #crumbs .cur { font-weight:600; }
+  #body { flex:1; display:flex; min-height:0; }
+  main { flex:1; position:relative; overflow:hidden; min-width:0; }
+  aside { width:0; overflow:hidden; border-left:1px solid var(--line); background:#fff;
+          transition:width .3s ease; display:flex; flex-direction:column; }
+  aside.open { width:440px; }
+  aside .hd { padding:10px 12px; border-bottom:1px solid var(--line); min-width:440px; }
+  aside .hd .row { display:flex; align-items:center; gap:8px; }
+  aside .hd h2 { font-size:14px; margin:0; flex:1; }
+  aside .hd .sub { color:var(--muted); font-size:12px; margin:2px 0 8px; }
+  aside .hd input { width:100%; font:inherit; padding:4px 6px; border:1px solid var(--line); border-radius:4px; }
+  aside .close { border:none; background:none; font-size:18px; cursor:pointer; color:var(--muted); }
+  aside .list { overflow-y:auto; flex:1; padding:4px 12px 20px; min-width:440px; }
+  aside h3 { font-size:12px; color:var(--muted); margin:14px 0 4px; font-weight:600;
+             border-bottom:1px solid var(--line); padding-bottom:2px; cursor:pointer; }
+  .def { padding:6px 0; border-bottom:1px dotted #eee; }
+  .def .lbl { font-weight:600; color:#0b62c4; font-family:ui-monospace, Menlo, monospace; }
+  .def .math { font-family:ui-monospace, Menlo, monospace; font-size:12px; background:#f4f4f4;
+               padding:3px 5px; border-radius:3px; margin:3px 0; white-space:pre-wrap; word-break:break-word; }
+  .def details summary { color:var(--muted); font-size:12px; cursor:pointer; }
+  .def .cm { font-size:12px; color:#333; margin-top:3px; }
+  .def .cm code { font-family:ui-monospace, Menlo, monospace; background:#f4f4f4; padding:0 2px; }
+  .def .cm .ref { font-family:ui-monospace, Menlo, monospace; color:#0b62c4; }
+  .empty { color:var(--muted); padding:16px 0; }
+  .node.sel > circle.n, .node.sel > rect.n { stroke:#000; stroke-width:2.5; }
+  svg { display:block; width:100%; height:100%; }
+  .node { cursor:pointer; }
+  .leafy { cursor:default; }
+  circle.n, rect.n { stroke:#fff; stroke-width:.6; }
+  .node:hover > circle.n, .node:hover > rect.n { stroke:#000; stroke-width:1.5; }
+  text { pointer-events:none; fill:#111; }
+  text.t-tm { font-size:11px; }
+  #tip { position:fixed; pointer-events:none; background:rgba(20,20,20,.92); color:#fff; padding:6px 8px;
+         border-radius:4px; font-size:12px; max-width:420px; display:none; z-index:10; }
+  #tip .path { color:#bbb; font-size:11px; }
+  .hint { color:var(--muted); font-size:12px; margin-left:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>set.mm map</h1>
+  <div class="seg" id="view">
+    <button data-v="pack" class="on">Circle pack</button><button data-v="treemap">Treemap</button>
+  </div>
+  <label>Depth <select id="depth"></select></label>
+  <label>Size by
+    <select id="metric">
+      <option value="all">$p + $a</option>
+      <option value="p">$p (theorems)</option>
+      <option value="a">$a (axioms/defs/syntax)</option>
+      <option value="count">equal (1 per leaf)</option>
+    </select>
+  </label>
+  <span class="hint">click = drill down · click a last-level node = its definitions · breadcrumb / Backspace = up</span>
+</header>
+<div id="crumbs"></div>
+<div id="body">
+  <main><svg id="chart"></svg></main>
+  <aside id="panel">
+    <div class="hd">
+      <div class="row"><h2 id="p-title"></h2><button class="close" title="Close">×</button></div>
+      <div class="sub" id="p-sub"></div>
+      <input id="p-filter" placeholder="Filter by label, statement or comment…">
+    </div>
+    <div class="list" id="p-list"></div>
+  </aside>
+</div>
+<div id="tip"></div>
+
+<script>
+const LEVEL = ["database", "part", "chapter", "section", "subsection", "subsubsection"];
+const raw = window.SETMM;
+
+// Full hierarchy with stable ids, used for navigation and breadcrumbs.
+const full = d3.hierarchy(raw);
+let nid = 0; full.each(d => d.id = nid++);
+const maxHeight = full.height;
+
+const DEFS = window.SETMM_DEFS || {};
+const state = { view: "pack", depth: 2, metric: "all", focus: full, panel: null, sel: null };
+
+const svg = d3.select("#chart");
+const tip = d3.select("#tip");
+const fmt = d3.format(",");
+
+function leafVal(d) {
+  const m = state.metric;
+  if (m === "count") return 1;
+  if (m === "p") return d.p || 0;
+  if (m === "a") return d.a || 0;
+  return (d.p || 0) + (d.a || 0);
+}
+
+// Subtree of `focus` cut at `depth` levels; cut nodes keep their full-subtree size.
+function buildView() {
+  const D = state.depth;
+  const strip = (h, k) => ({
+    src: h,
+    children: (k < D && h.children) ? h.children.map(c => strip(c, k + 1)) : null,
+  });
+  const root = d3.hierarchy(strip(state.focus, 0), d => d.children)
+    .each(n => {
+      if (!n.children) n.data.v = n.data.src.copy().sum(x => x.children ? 0 : leafVal(x)).value;
+    })
+    .sum(d => d.children ? 0 : d.v)
+    .sort((a, b) => b.value - a.value);
+  return root;
+}
+
+// Colour by the child of focus the node descends from; deeper = lighter.
+function colorer(root) {
+  const tops = (root.children || [root]).map(d => d.data.src.id);
+  const pal = d3.scaleOrdinal(tops, d3.quantize(t => d3.interpolateRainbow(t * 0.9 + 0.05), Math.max(tops.length, 2)));
+  return d => {
+    if (d.depth === 0) return "#eee";
+    let a = d; while (a.depth > 1) a = a.parent;
+    const c = d3.hsl(pal(a.data.src.id));
+    c.s *= 0.55; c.l = Math.min(0.92, 0.55 + 0.1 * (d.depth - 1));
+    return c;
+  };
+}
+
+function pathOf(h) { return h.ancestors().reverse().slice(1).map(a => a.data.name); }
+
+function showTip(ev, d) {
+  const s = d.data.src, x = s.data;
+  const agg = s.copy().sum(n => n.children ? 0 : (n.p || 0) + (n.a || 0)).value;
+  const p = s.copy().sum(n => n.children ? 0 : (n.p || 0)).value;
+  tip.style("display", "block").html(
+    `<div class="path">${pathOf(s).slice(0, -1).join(" › ") || "&nbsp;"}</div>` +
+    `<b>${x.name}</b> <span class="path">(${LEVEL[s.depth] || "level " + s.depth}, line ${fmt(x.line)})</span><br>` +
+    `${fmt(agg)} statements · ${fmt(p)} $p · ${fmt(agg - p)} $a` +
+    (s.children ? ` · ${s.children.length} children` : ""));
+  moveTip(ev);
+}
+function moveTip(ev) {
+  const w = tip.node().offsetWidth, h = tip.node().offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + w > innerWidth) x = ev.clientX - w - 14;
+  if (y + h > innerHeight) y = ev.clientY - h - 14;
+  tip.style("left", x + "px").style("top", y + "px");
+}
+function hideTip() { tip.style("display", "none"); }
+
+function drill(src) {
+  if (!src.children) { state.sel = src; openPanel(src); highlight(); return; }
+  state.focus = src; state.sel = null; render(true);
+}
+
+// ---- definitions panel ----
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// set.mm comment markup: ` math ` and ~ label
+function markup(s) {
+  return esc(s).split("`").map((part, i) => i % 2 ? `<code>${part.trim()}</code>`
+    : part.replace(/~ (\S+)/g, '<span class="ref">$1</span>')).join("");
+}
+function defsUnder(node) {
+  return node.leaves().map(l => ({ leaf: l, defs: DEFS[l.data.line] || [] })).filter(g => g.defs.length);
+}
+function openPanel(node) {
+  state.panel = node;
+  d3.select("#p-filter").property("value", "");
+  fillPanel();
+  const a = d3.select("#panel");
+  if (!a.classed("open")) { a.classed("open", true); }
+}
+function closePanel() {
+  state.panel = null; state.sel = null;
+  d3.select("#panel").classed("open", false); highlight();
+}
+function fillPanel() {
+  const node = state.panel; if (!node) return;
+  const q = d3.select("#p-filter").property("value").trim().toLowerCase();
+  const groups = defsUnder(node).map(g => ({ leaf: g.leaf,
+    defs: q ? g.defs.filter(d => d.join(" ").toLowerCase().includes(q)) : g.defs })).filter(g => g.defs.length);
+  const total = d3.sum(groups, g => g.defs.length);
+  d3.select("#p-title").text(node.data.name);
+  d3.select("#p-sub").text(`${pathOf(node).slice(0, -1).join(" › ")} — ${total} definition${total === 1 ? "" : "s"}` +
+    (node.children ? ` in ${groups.length} section${groups.length === 1 ? "" : "s"}` : ""));
+  const list = d3.select("#p-list").html("");
+  if (!groups.length) { list.append("div").attr("class", "empty").text(q ? "No match." : "No df- definitions here."); return; }
+  for (const g of groups) {
+    if (node.children) list.append("h3").text(g.leaf.data.name).attr("title", "Show only this section")
+      .on("click", () => { state.sel = g.leaf; openPanel(g.leaf); highlight(); });
+    for (const [lbl, math, cm] of g.defs) {
+      const el = list.append("div").attr("class", "def");
+      el.append("div").attr("class", "lbl").text(lbl);
+      el.append("div").attr("class", "math").text(math);
+      if (cm) { const det = el.append("details"); det.append("summary").text("comment");
+                det.append("div").attr("class", "cm").html(markup(cm)); }
+    }
+  }
+  list.node().scrollTop = 0;
+}
+function highlight() {
+  svg.selectAll("g.layer g").classed("sel", d => state.sel && d.data.src === state.sel);
+}
+// Panel follows the focus once the view is at the last level.
+function syncPanel() {
+  if (state.focus.height === 1) {
+    if (!state.sel || state.sel.parent !== state.focus) state.sel = null;
+    openPanel(state.sel || state.focus);
+  } else if (state.panel && !(state.sel && state.focus.leaves().includes(state.sel))) {
+    closePanel();
+  }
+}
+d3.select("#panel .close").on("click", closePanel);
+d3.select("#p-filter").on("input", fillPanel);
+d3.select("#panel").on("transitionend", ev => { if (ev.propertyName === "width") render(false); });
+
+function crumbs() {
+  const el = d3.select("#crumbs").html("");
+  const anc = state.focus.ancestors().reverse();
+  anc.forEach((a, i) => {
+    if (i) el.append("span").attr("class", "sep").text("›");
+    if (i === anc.length - 1) el.append("span").attr("class", "cur").text(a.data.name);
+    else el.append("a").text(a.data.name).on("click", () => { state.focus = a; render(true); });
+  });
+}
+
+function depthOptions() {
+  const maxD = state.focus.height;
+  if (state.depth > maxD) state.depth = maxD;
+  const sel = d3.select("#depth");
+  sel.selectAll("option").data(d3.range(1, maxD + 1)).join("option")
+    .attr("value", d => d).text(d => `${d} — ${LEVEL[state.focus.depth + d] || "level " + (state.focus.depth + d)}`);
+  sel.property("value", state.depth);
+}
+
+function render(animate) {
+  depthOptions(); crumbs(); hideTip();
+  if (animate) syncPanel();
+  const { width, height } = svg.node().getBoundingClientRect();
+  svg.attr("viewBox", [0, 0, width, height]);
+  const root = buildView();
+  const color = colorer(root);
+  const old = svg.selectAll("g.layer");
+  old.transition().duration(animate ? 250 : 0).style("opacity", 0).remove();
+  const g = svg.append("g").attr("class", "layer").style("opacity", 0);
+  (state.view === "pack" ? drawPack : drawTreemap)(g, root, color, width, height);
+  g.transition().duration(animate ? 350 : 0).style("opacity", 1);
+  highlight();
+}
+
+function bind(sel) {
+  sel.attr("class", d => "node" + (d.data.src.children && d.depth > 0 ? "" : " leafy"))
+     .on("mouseenter", showTip).on("mousemove", moveTip).on("mouseleave", hideTip)
+     .on("click", (ev, d) => { ev.stopPropagation(); 
+       if (d.depth > 0) drill(d.data.src);
+       else if (state.focus.parent) { state.focus = state.focus.parent; state.sel = null; render(true); } });
+}
+
+function drawPack(g, root, color, W, H) {
+  const size = Math.min(W, H) - 10;
+  d3.pack().size([size, size]).padding(d => d.depth === 0 ? 6 : 3)(root);
+  g.attr("transform", `translate(${(W - size) / 2},${(H - size) / 2})`);
+  const node = g.selectAll("g").data(root.descendants()).join("g")
+    .attr("transform", d => `translate(${d.x},${d.y})`);
+  bind(node);
+  node.append("circle").attr("class", "n").attr("r", d => d.r).attr("fill", color)
+    .attr("fill-opacity", d => d.children ? 0.55 : 0.95);
+  // Label leaves of the view that are large enough; also label parents at depth 1 when depth>1 is shallow.
+  node.filter(d => !d.children && d.r > 18).append("text")
+    .attr("text-anchor", "middle").attr("dy", "0.35em")
+    .style("font-size", d => Math.min(13, Math.max(8, d.r / 4)) + "px")
+    .text(d => clip(d.data.src.data.name, Math.floor(d.r / 3.2)));
+}
+
+function drawTreemap(g, root, color, W, H) {
+  d3.treemap().size([W, H]).tile(d3.treemapSquarify.ratio(1.3))
+    .paddingOuter(3).paddingTop(d => d.depth > 0 ? 16 : 3).paddingInner(1).round(true)(root);
+  const node = g.selectAll("g").data(root.descendants().filter(d => d.depth > 0)).join("g")
+    .attr("transform", d => `translate(${d.x0},${d.y0})`);
+  bind(node);
+  node.append("rect").attr("class", "n")
+    .attr("width", d => Math.max(0, d.x1 - d.x0)).attr("height", d => Math.max(0, d.y1 - d.y0))
+    .attr("fill", color);
+  node.append("clipPath").attr("id", d => "c" + d.data.src.id)
+    .append("rect").attr("width", d => Math.max(0, d.x1 - d.x0 - 2)).attr("height", d => Math.max(0, d.y1 - d.y0));
+  node.filter(d => (d.x1 - d.x0) > 30 && (d.y1 - d.y0) > 13).append("text").attr("class", "t-tm")
+    .attr("clip-path", d => `url(#c${d.data.src.id})`)
+    .attr("x", 4).attr("y", 12)
+    .style("font-weight", d => d.children ? 600 : 400)
+    .text(d => d.data.src.data.name + (d.children ? "" : "  " + fmt(d.value)));
+}
+
+function clip(s, n) { return s.length <= n ? s : s.slice(0, Math.max(1, n - 1)) + "…"; }
+
+// Controls
+d3.selectAll("#view button").on("click", function () {
+  state.view = this.dataset.v;
+  d3.selectAll("#view button").classed("on", function () { return this.dataset.v === state.view; });
+  render(true);
+});
+d3.select("#depth").on("change", function () { state.depth = +this.value; render(true); });
+d3.select("#metric").on("change", function () { state.metric = this.value; render(true); });
+svg.on("click", () => { if (state.focus.parent) { state.focus = state.focus.parent; render(true); } });
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") { if (e.key === "Escape") e.target.blur(); return; }
+  if (e.key === "Escape" && state.panel && state.focus.height !== 1) { closePanel(); return; }
+  if ((e.key === "Backspace" || e.key === "Escape") && state.focus.parent) { state.focus = state.focus.parent; render(true); }
+});
+addEventListener("resize", () => render(false));
+render(false);
+</script>
+</body>
+</html>
