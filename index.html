@@ -305,7 +305,42 @@ function drawTreemap(g, root, color, W, H) {
     .attr("clip-path", d => `url(#c${d.data.src.id})`)
     .attr("x", 4).attr("y", 12)
     .style("font-weight", d => d.children ? 600 : 400)
-    .text(d => d.data.src.data.name + (d.children ? "" : "  " + fmt(d.value)));
+    .each(function (d) {
+      const t = d3.select(this), w = d.x1 - d.x0 - 8, h = d.y1 - d.y0 - 2;
+      // Group headers sit in the 16px top band: one line, clipped.
+      if (d.children) { t.text(d.data.src.data.name); return; }
+      const maxLines = Math.max(1, Math.floor((h - 2) / LINE_H));
+      const lines = wrap(d.data.src.data.name, w, maxLines - 1 || 1);
+      if (lines.length < maxLines) lines.push(fmt(d.value));
+      lines.forEach((ln, i) => t.append("tspan").attr("x", 4).attr("dy", i ? LINE_H : 0)
+        .attr("fill-opacity", i === lines.length - 1 && ln === fmt(d.value) ? 0.6 : 1).text(ln));
+    });
+}
+
+// Greedy word wrap into at most maxLines lines of width w (px); last line gets "…" if cut.
+const LINE_H = 12;
+const measureCtx = document.createElement("canvas").getContext("2d");
+measureCtx.font = "11px system-ui, sans-serif";
+const textW = s => measureCtx.measureText(s).width;
+function wrap(text, w, maxLines) {
+  const words = text.split(/\s+/), lines = [];
+  let cur = "";
+  for (let i = 0; i < words.length; i++) {
+    const tryLine = cur ? cur + " " + words[i] : words[i];
+    if (textW(tryLine) <= w || !cur) { cur = tryLine; continue; }
+    lines.push(cur); cur = words[i];
+    if (lines.length === maxLines) { cur = null; break; }
+  }
+  if (cur !== null) lines.push(cur);
+  const cut = lines.length > maxLines || cur === null;
+  lines.length = Math.min(lines.length, maxLines);
+  // Ellipsize the last line if truncated or too wide.
+  let last = lines[lines.length - 1];
+  if (cut || textW(last) > w) {
+    while (last.length > 1 && textW(last + "…") > w) last = last.slice(0, -1);
+    lines[lines.length - 1] = last + "…";
+  }
+  return lines;
 }
 
 function clip(s, n) { return s.length <= n ? s : s.slice(0, Math.max(1, n - 1)) + "…"; }
